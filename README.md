@@ -30,7 +30,7 @@ The published `train_lora_sft.py` imports `lora_model_setup.py`: this is a verba
 
 All nine metrics below are point estimates with **95% percentile bootstrap CIs** from 10,000 paired resamples of the same 600 test posts (seed 42). Values are percentages: point estimate [CI lower, CI upper].
 
-| Metric | Qwen3.5-4B BF16 | Qwen3.5-4B Consensus SFT Epoch3 | Qwen3.5-4B SFT Unanimous Epoch1 |
+| Metric | Qwen3.5-4B BF16 | Qwen3.5-4B Consensus SFT Epoch3 | Qwen3.5-4B Unanimous SFT Epoch1 |
 | --- | ---: | ---: | ---: |
 | Exact Match | 45.83% [41.83%, 49.83%] | 75.00% [71.50%, 78.50%] | 74.50% [71.00%, 78.00%] |
 | Sample Jaccard | 48.55% [44.63%, 52.47%] | 79.24% [76.16%, 82.23%] | 77.60% [74.42%, 80.69%] |
