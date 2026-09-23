@@ -1,11 +1,11 @@
 # Sensitive or large local artifacts are not part of this code-and-aggregate-results release.
 /data/
 /outputs/**/*
-!/outputs/bf16base-vs-sft-all-test/
-!/outputs/bf16base-vs-sft-all-test/bootstrap-ci/
-!/outputs/bf16base-vs-sft-all-test/bootstrap-ci/summary.md
-!/outputs/bf16base-vs-sft-all-test/bootstrap-ci/summary.csv
-!/outputs/bf16base-vs-sft-all-test/bootstrap-ci/paired-differences.csv
+!/outputs/qwen35-4b/
+!/outputs/qwen35-4b/**/
+!/outputs/qwen35-4b/**/*.md
+!/outputs/qwen35-4b/**/*.csv
+!/outputs/qwen35-4b/**/*.png
 
 __pycache__/
 ._*

@@ -19,7 +19,7 @@ def load_json(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def read_run(root):
+def read_run(root, before_training_dir=None):
     config = load_json(root / "resolved-config.json")
     selection = load_json(root / "best-adapter/selection.json")
     histories = sorted(root.glob("training-history-*.jsonl"))
@@ -39,9 +39,19 @@ def read_run(root):
     if sorted(by_step) != list(range(1, last_step + 1)):
         raise ValueError("Training history is not contiguous through the final selected run state")
     history = [by_step[step] for step in sorted(by_step)]
+    paths = sorted((root / "validation").glob("*-metrics.json"))
+    if before_training_dir is not None:
+        # Runs with evaluate_before_training=false reuse the untrained model's result from another run.
+        if any(path.name.startswith("before-training-") for path in paths):
+            raise ValueError("This run already has its own before-training validation result")
+        other = load_json(before_training_dir / "resolved-config.json")
+        for key in ("model", "revision", "model_path", "data_dir", "eval_max_input_tokens", "max_new_tokens"):
+            if other.get(key) != config.get(key):
+                raise ValueError(f"--before-training-dir differs in {key}; the untrained model must be identical")
+        paths += sorted((before_training_dir / "validation").glob("before-training-*-metrics.json"))
     stages = {}
     reference_gold = None
-    for path in sorted((root / "validation").glob("*-metrics.json")):
+    for path in paths:
         match = re.match(r"(before-training|epoch-(\d+))-", path.name)
         if not match:
             continue
@@ -65,7 +75,8 @@ def read_run(root):
             raise ValueError(f"Multiple validation results for epoch {epoch}; resolve replay provenance first")
         stages[epoch] = {"epoch": epoch, "source": str(path), "metrics": metrics}
     if sorted(stages) != list(range(config["num_train_epochs"] + 1)):
-        raise ValueError("Expected before-training and one validation result per epoch")
+        raise ValueError("Expected before-training and one validation result per epoch "
+                         "(use --before-training-dir for runs with evaluate_before_training=false)")
     candidates = [stages[epoch] for epoch in sorted(stages) if epoch > 0]
     selected = max(candidates, key=lambda item: item["metrics"]["macro_crisis_only_14_labels"]["f1"])
     best_epoch = selected["epoch"]
@@ -83,7 +94,11 @@ def save_plot(figure, output, name):
     plt.close(figure)
 
 
-def loss_plot(history, output, window):
+def model_name(config):
+    return config["model"].split("/")[-1]
+
+
+def loss_plot(history, config, output, window):
     steps = np.array([row["step"] for row in history])
     loss = np.array([row["loss"] for row in history])
     weights = np.array([row["examples"] for row in history])
@@ -101,14 +116,15 @@ def loss_plot(history, output, window):
         if epoch != epochs[-1]:
             ax.axvline(max(positions) + 0.5, color="#bcc5ce", linewidth=0.9, linestyle="--")
     ax.set(xlabel="Optimizer update", ylabel="Answer-token cross-entropy (nats)",
-           title="Qwen3.5-4B LoRA SFT | CRADLE consensus training loss", xlim=(1, steps[-1]), ylim=(0, max(loss) * 1.12))
+           title=f"{model_name(config)} LoRA SFT | CRADLE {config['split']} training loss",
+           xlim=(1, steps[-1]), ylim=(0, max(loss) * 1.12))
     ax.grid(axis="y", color="#e5e8ec", linewidth=0.7)
     ax.spines[["top", "right"]].set_visible(False)
     ax.legend(loc="upper right", bbox_to_anchor=(1, 0.88), frameon=False)
     save_plot(figure, output, "training-loss")
 
 
-def metric_table(stages, best_epoch, output):
+def metric_table(stages, best_epoch, config, output):
     before = stages[0]["metrics"]
     best = stages[best_epoch]["metrics"]
     rows = []
@@ -117,7 +133,7 @@ def metric_table(stages, best_epoch, output):
         rows.append([name, f"{a * 100:.2f}%", f"{b * 100:.2f}%", f"{(b - a) * 100:+.2f}"])
     figure, ax = plt.subplots(figsize=(10, 5.4))
     ax.axis("off")
-    ax.set_title(f"Qwen3.5-4B before vs LoRA SFT (epoch {best_epoch})\nSame 420 validation samples | BF16", pad=18)
+    ax.set_title(f"{model_name(config)} before vs LoRA SFT (epoch {best_epoch})\nSame 420 validation samples | BF16", pad=18)
     table = ax.table(cellText=rows, colLabels=["Metric", "Before", f"SFT epoch {best_epoch}", "Change (pp)"],
                      colWidths=[0.43, 0.18, 0.19, 0.20], loc="center", cellLoc="right")
     table.auto_set_font_size(False)
@@ -142,13 +158,15 @@ def main():
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--window", type=int, default=20)
+    parser.add_argument("--before-training-dir", type=Path,
+                        help="Run directory whose before-training validation to reuse (same untrained model)")
     args = parser.parse_args()
     if args.window < 1:
         parser.error("window must be positive")
-    config, history, stages, selection, best_epoch = read_run(args.run_dir)
+    config, history, stages, selection, best_epoch = read_run(args.run_dir, args.before_training_dir)
     args.output_dir.mkdir(parents=True, exist_ok=False)
-    loss_plot(history, args.output_dir, args.window)
-    rows = metric_table(stages, best_epoch, args.output_dir)
+    loss_plot(history, config, args.output_dir, args.window)
+    rows = metric_table(stages, best_epoch, config, args.output_dir)
     epoch_losses = []
     for epoch in range(1, config["num_train_epochs"] + 1):
         subset = [row for row in history if row["epoch"] == epoch]

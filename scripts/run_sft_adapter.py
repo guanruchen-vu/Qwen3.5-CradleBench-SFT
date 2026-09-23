@@ -15,9 +15,13 @@ def main():
     parser.add_argument("--split", choices=("validation", "test"), default="validation")
     parser.add_argument("--output", type=Path, required=True, help="Must not already exist")
     parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--max-input-tokens", type=int,
+                        help="Override the training config's eval_max_input_tokens (prompts are never truncated below this)")
     args = parser.parse_args()
     if args.batch_size < 1:
         parser.error("batch-size must be positive")
+    if args.max_input_tokens is not None and args.max_input_tokens < 1:
+        parser.error("max-input-tokens must be positive")
     if args.output.exists():
         raise FileExistsError(args.output)
     config = json.loads((args.adapter / "training-config.json").read_text())
@@ -38,7 +42,7 @@ def main():
     model.eval()
     options = SimpleNamespace(text=None, index=None, limit=None, split=args.split,
                               data_dir=Path(config["data_dir"]),
-                              max_input_tokens=config["eval_max_input_tokens"], max_new_tokens=config["max_new_tokens"])
+                              max_input_tokens=args.max_input_tokens or config["eval_max_input_tokens"], max_new_tokens=config["max_new_tokens"])
     rows = load_rows(options)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("x", encoding="utf-8") as destination:

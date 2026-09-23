@@ -45,6 +45,53 @@ def validate_config(config):
     if config["best_metric"] != "macro_crisis_only_14_labels.f1":
         raise ValueError("This experiment selects checkpoints by crisis-only Macro F1")
     re.compile(config["target_pattern"])
+    validate_loss_weighting(config.get("loss_weighting"), config["split"])
+
+
+def validate_loss_weighting(spec, split):
+    """Optional label-level IPW; an absent spec keeps the original unweighted loss."""
+    if spec is None:
+        return
+    if not isinstance(spec, dict) or set(spec) != {"method", "reference_split", "clip"}:
+        raise ValueError("loss_weighting needs exactly: method, reference_split, clip")
+    if spec["method"] != "label_ipw":
+        raise ValueError("Only method=label_ipw is implemented")
+    if (split, spec["reference_split"]) != ("train_unanimous", "train_consensus"):
+        raise ValueError("label_ipw reweights train_unanimous toward train_consensus")
+    clip = spec["clip"]
+    if not isinstance(clip, list) or len(clip) != 2 or not 0 < clip[0] <= 1 <= clip[1] < float("inf"):
+        raise ValueError("clip must be [low, high] with 0 < low <= 1 <= high")
+
+
+def label_ipw_weights(train_rows, reference_rows, clip):
+    """Mild inverse-retention weights for a training split that is a subset of the reference split.
+
+    Each label gets count_reference / count_train (one over its retention rate); a post takes
+    the largest ratio among its labels. Weights are normalized to mean 1, so the overall
+    gradient scale and learning rate stay comparable with unweighted runs.
+    """
+    reference_texts = {clean_question_text(row["question_text"]) for row in reference_rows}
+    if any(clean_question_text(row["question_text"]) not in reference_texts for row in train_rows):
+        raise ValueError("label_ipw requires every training post to occur in the reference split")
+    train_counts = Counter(label for row in train_rows for label in parse_gold_labels(row["final_labels"]))
+    reference_counts = Counter(label for row in reference_rows for label in parse_gold_labels(row["final_labels"]))
+    if any(not 0 < train_counts[label] <= reference_counts[label] for label in CANONICAL_LABELS):
+        raise ValueError("Every label needs 0 < training count <= reference count")
+    ratio = {label: reference_counts[label] / train_counts[label] for label in CANONICAL_LABELS}
+    raw = [max(ratio[label] for label in parse_gold_labels(row["final_labels"])) for row in train_rows]
+    raw_mean = sum(raw) / len(raw)
+    low, high = clip
+    clipped = [min(max(value / raw_mean, low), high) for value in raw]
+    final_mean = sum(clipped) / len(clipped)
+    weights = [value / final_mean for value in clipped]
+    return weights, {
+        "method": "label_ipw", "post_weight": "max over the post's labels, normalized to mean 1",
+        "clip": clip, "clipped_examples": sum(not low <= value / raw_mean <= high for value in raw),
+        "retention_rate": {label: 1 / ratio[label] for label in CANONICAL_LABELS},
+        "normalized_label_weight": {label: ratio[label] / raw_mean / final_mean for label in CANONICAL_LABELS},
+        "min_weight": min(weights), "max_weight": max(weights),
+        "effective_sample_size": sum(weights) ** 2 / sum(weight * weight for weight in weights),
+    }
 
 
 def fingerprint(value):
@@ -80,12 +127,20 @@ def prepare_full_data(processor, config):
     overlap = train_texts & validation_texts
     if overlap:
         raise ValueError(f"Found {len(overlap)} identical posts shared by training and validation")
+    weighting = config.get("loss_weighting")
+    weights = None
+    if weighting:
+        reference_rows, reference_report = read_split(config["data_dir"], weighting["reference_split"])
+        weights, weight_report = label_ipw_weights(train_rows, reference_rows, weighting["clip"])
+        weight_report["reference"] = {key: reference_report[key] for key in ("path", "rows", "sha256")}
     examples, overlong = [], []
-    for row in train_rows:
+    for index, row in enumerate(train_rows):
         example = encode_example(processor, row, config["max_length"])
         if example is None:
             overlong.append(row["question_id"])
         else:
+            if weights is not None:
+                example["weight"] = weights[index]
             examples.append(example)
     if overlong:
         raise ValueError(f"{len(overlong)} training posts exceed max_length; increase it. "
@@ -110,6 +165,8 @@ def prepare_full_data(processor, config):
               "encoded_training_sha256": fingerprint(examples),
               "validation_prompt_lengths_sha256": fingerprint(prompt_lengths),
               "test_split_loaded": False}
+    if weighting:
+        report["loss_weighting"] = weight_report
     return examples, validation_rows, report
 
 

@@ -48,12 +48,15 @@ def answer_loss(model, example, torch):
 
 def optimizer_update(model, trainable, examples, indices, optimizer, scheduler, config, torch):
     optimizer.zero_grad(set_to_none=True)
-    losses = []
+    losses, weights = [], []
     for index in indices:
         loss = answer_loss(model, examples[index], torch)
+        # Optional label-IPW weight (mean 1 over the training set); unweighted runs use 1.
+        weight = examples[index].get("weight", 1.0)
         # The last partial group uses its ACTUAL size, not the configured accumulation count.
-        (loss / len(indices)).backward()
+        (weight * loss / len(indices)).backward()
         losses.append(loss.item())
+        weights.append(weight)
     if any(p.grad is None for p in trainable.values()):
         raise RuntimeError("A targeted LoRA parameter has no gradient")
     norm = torch.nn.utils.clip_grad_norm_(list(trainable.values()), config["max_grad_norm"],
@@ -61,8 +64,12 @@ def optimizer_update(model, trainable, examples, indices, optimizer, scheduler, 
     lr_used = optimizer.param_groups[0]["lr"]
     optimizer.step()
     scheduler.step()
-    return {"loss": sum(losses) / len(losses), "grad_norm": norm.item(),
-            "learning_rate": lr_used, "examples": len(indices)}
+    record = {"loss": sum(losses) / len(losses), "grad_norm": norm.item(),
+              "learning_rate": lr_used, "examples": len(indices)}
+    if "weight" in examples[indices[0]]:
+        # "loss" stays unweighted so curves remain comparable with earlier runs.
+        record["weighted_loss"] = sum(w * l for w, l in zip(weights, losses)) / len(losses)
+    return record
 
 
 def make_optimizer(model, config, total_steps, torch):
