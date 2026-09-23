@@ -1,6 +1,6 @@
 # Qwen3.5 × CRADLE Bench: BF16 baseline and LoRA SFT
 
-This repository contains the **Qwen3.5-4B** code used to train and evaluate two CRADLE Bench classifiers, plus aggregate test-set results. It excludes the smoke test, the 9B experiment, raw Reddit posts, per-post predictions, model weights, checkpoints, and machine-specific credentials. This is a research/learning project, **not a clinical screening or crisis-response tool**.
+This repository contains the **Qwen3.5-4B** code used to train and evaluate two CRADLE Bench classifiers, plus aggregate test-set results.  This is a research/learning project, **not a clinical screening or crisis-response tool**.
 
 ## Model and data
 
