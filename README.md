@@ -42,22 +42,4 @@ All nine metrics below are point estimates with **95% percentile bootstrap CIs**
 | Macro Recall · crisis 14 | 41.89% [36.96%, 47.55%] | 73.39% [66.84%, 79.73%] | 60.85% [55.66%, 66.23%] |
 | Valid Format | 95.67% [94.00%, 97.17%] | 99.00% [98.17%, 99.67%] | 99.00% [98.17%, 99.67%] |
 
-### Paired differences
-
-Each cell is the later model minus the earlier model, in percentage points (pp): point difference [95% CI]. Positive values favor the later model.
-
-| Metric | Consensus SFT − BF16 base | Unanimous SFT − BF16 base | Unanimous SFT − Consensus SFT |
-| --- | ---: | ---: | ---: |
-| Exact Match | +29.17 pp [+24.67, +33.67] | +28.67 pp [+24.33, +33.17] | -0.50 pp [-3.50, +2.50] |
-| Sample Jaccard | +30.69 pp [+26.43, +34.99] | +29.05 pp [+24.80, +33.36] | -1.64 pp [-4.31, +1.04] |
-| Micro F1 | +31.16 pp [+26.80, +35.58] | +28.96 pp [+24.54, +33.35] | -2.20 pp [-5.00, +0.61] |
-| Macro F1 · all 15 | +35.35 pp [+28.47, +41.58] | +28.41 pp [+22.96, +33.60] | -6.94 pp [-12.91, -0.44] |
-| Macro F1 · crisis 14 | +36.12 pp [+28.88, +42.67] | +28.76 pp [+22.98, +34.28] | -7.36 pp [-13.71, -0.46] |
-| Micro Recall | +33.43 pp [+29.06, +37.87] | +28.21 pp [+23.86, +32.54] | -5.22 pp [-8.27, -2.27] |
-| Macro Recall · all 15 | +31.20 pp [+22.32, +39.08] | +19.67 pp [+14.01, +25.09] | -11.53 pp [-17.88, -4.91] |
-| Macro Recall · crisis 14 | +31.51 pp [+21.97, +39.97] | +18.96 pp [+12.91, +24.65] | -12.54 pp [-19.33, -5.49] |
-| Valid Format | +3.33 pp [+2.00, +4.83] | +3.33 pp [+2.00, +4.83] | +0.00 pp [+0.00, +0.00] |
-
-The **three published CI result files** are the [readable summary](outputs/bf16base-vs-sft-all-test/bootstrap-ci/summary.md), [machine-readable summary table](outputs/bf16base-vs-sft-all-test/bootstrap-ci/summary.csv), and [paired-differences table](outputs/bf16base-vs-sft-all-test/bootstrap-ci/paired-differences.csv). These percentile CIs describe sampling uncertainty on this test set; they are neither significance tests nor clinical validation. Macro F1 follows the analysis script's convention of assigning F1 = 0 to a label absent from a resample.
-
-Raw data and individual predictions are intentionally not committed. Download the dataset from its original source and run the scripts to regenerate them.
+Raw data and individual predictions are not committed. Download the dataset from its original source and run the scripts to regenerate them.
