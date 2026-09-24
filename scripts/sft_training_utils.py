@@ -18,11 +18,16 @@ from cradle_common import (
 from cradle_sft_data import encode_example
 
 
+SUPPORTED_MODELS = ("Qwen/Qwen3.5-4B", "Qwen/Qwen3.5-9B")
+
+
 def validate_config(config):
     if "sample_count" in config or "optimizer_steps" in config:
         raise ValueError("Use the formal SFT config: sample_count/optimizer_steps are smoke-only")
-    if config["model"] != "Qwen/Qwen3.5-4B" or not re.fullmatch(r"[0-9a-f]{40}", config["revision"]):
-        raise ValueError("Expected Qwen3.5-4B pinned to a 40-character model revision")
+    if config["model"] not in SUPPORTED_MODELS or not re.fullmatch(r"[0-9a-f]{40}", config["revision"]):
+        raise ValueError("Expected Qwen3.5-4B or Qwen3.5-9B pinned to a 40-character model revision")
+    if "model_path" in config and not (isinstance(config["model_path"], str) and config["model_path"]):
+        raise ValueError("model_path must be a non-empty string")
     if config["split"] not in {"train_consensus", "train_unanimous"}:
         raise ValueError("Training may only use a training split")
     for key in ("seed", "max_length", "eval_max_input_tokens", "lora_rank", "lora_alpha",
@@ -92,6 +97,25 @@ def label_ipw_weights(train_rows, reference_rows, clip):
         "min_weight": min(weights), "max_weight": max(weights),
         "effective_sample_size": sum(weights) ** 2 / sum(weight * weight for weight in weights),
     }
+
+
+def model_source(config):
+    """from_pretrained arguments: the HF cache at the pinned revision, or, when model_path is set,
+    a local `hf download --local-dir` copy whose per-file download records match that revision."""
+    if "model_path" not in config:
+        return {"pretrained_model_name_or_path": config["model"], "revision": config["revision"]}
+    path = Path(config["model_path"]).expanduser()
+    records = path / ".cache/huggingface/download"
+    files = sorted(item.name for item in path.iterdir() if item.is_file()) if path.is_dir() else []
+    wrong = {}
+    for name in files:
+        record = records / f"{name}.metadata"
+        commit = record.read_text().splitlines()[0] if record.is_file() else None
+        if commit != config["revision"]:
+            wrong[name] = commit
+    if not files or wrong:
+        raise ValueError(f"{path} does not match revision {config['revision']}: {wrong or 'no files'}")
+    return {"pretrained_model_name_or_path": str(path)}
 
 
 def fingerprint(value):

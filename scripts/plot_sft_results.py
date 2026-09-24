@@ -160,13 +160,18 @@ def main():
     parser.add_argument("--window", type=int, default=20)
     parser.add_argument("--before-training-dir", type=Path,
                         help="Run directory whose before-training validation to reuse (same untrained model)")
+    parser.add_argument("--report-epoch", type=int,
+                        help="Epoch to compare with the untrained model (default: the validation-selected epoch)")
     args = parser.parse_args()
     if args.window < 1:
         parser.error("window must be positive")
     config, history, stages, selection, best_epoch = read_run(args.run_dir, args.before_training_dir)
+    report_epoch = args.report_epoch or best_epoch
+    if not 1 <= report_epoch <= config["num_train_epochs"]:
+        parser.error(f"--report-epoch must be between 1 and {config['num_train_epochs']}")
     args.output_dir.mkdir(parents=True, exist_ok=False)
     loss_plot(history, config, args.output_dir, args.window)
-    rows = metric_table(stages, best_epoch, config, args.output_dir)
+    rows = metric_table(stages, report_epoch, config, args.output_dir)
     epoch_losses = []
     for epoch in range(1, config["num_train_epochs"] + 1):
         subset = [row for row in history if row["epoch"] == epoch]
@@ -174,12 +179,14 @@ def main():
         epoch_losses.append({"epoch": epoch, "updates": len(subset), "examples": count,
                              "mean_sample_loss": sum(row["loss"] * row["examples"] for row in subset) / count})
     summary = {"training_split": config["split"], "model": config["model"], "config": config,
-               "selection": selection, "best_epoch": best_epoch, "epoch_training_loss": epoch_losses,
+               "selection": selection, "best_epoch": best_epoch, "reported_epoch": report_epoch,
+               "epoch_training_loss": epoch_losses,
                "validation_stages": stages, "comparison_rows_percent": rows,
                "note": "Training loss only; no validation CE was logged. Model selection uses validation crisis Macro F1."}
     (args.output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    lines = [f"Training split: {config['split']}. Selected epoch: {best_epoch}.", "",
-             "| Metric | Before | Selected SFT | Change (pp) |", "|---|---:|---:|---:|"]
+    lines = [f"Training split: {config['split']}. Reported epoch: {report_epoch}. "
+             f"(Epoch with the highest validation crisis Macro F1: {best_epoch}.)", "",
+             f"| Metric | Before | Epoch {report_epoch} | Change (pp) |", "|---|---:|---:|---:|"]
     lines.extend("| " + " | ".join(row) + " |" for row in rows)
     lines.extend(["", "| Stage | Exact match | Micro F1 | Macro F1 (15) | Crisis Macro F1 | Micro recall | Crisis Macro recall |",
                   "|---|---:|---:|---:|---:|---:|---:|"])

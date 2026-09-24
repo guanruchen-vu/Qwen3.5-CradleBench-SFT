@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import re
 
+from sft_training_utils import model_source
+
 
 def write_json(path: Path, value) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -19,7 +21,7 @@ def initialize_model(config, torch):
         raise RuntimeError("A CUDA GPU with BF16 support is required")
     # Ordinary LoRA: no BitsAndBytesConfig, no k-bit preparation, no CPU offloading.
     base = AutoModelForMultimodalLM.from_pretrained(
-        config["model"], revision=config["revision"], local_files_only=True,
+        **model_source(config), local_files_only=True,
         dtype=torch.bfloat16, device_map={"": 0}, attn_implementation="sdpa",
     )
     if getattr(base, "is_quantized", False) or base.get_input_embeddings().weight.dtype != torch.bfloat16:

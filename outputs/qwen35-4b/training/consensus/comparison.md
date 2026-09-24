@@ -1,6 +1,6 @@
-Training split: train_consensus. Selected epoch: 3.
+Training split: train_consensus. Reported epoch: 3. (Epoch with the highest validation crisis Macro F1: 3.)
 
-| Metric | Before | Selected SFT | Change (pp) |
+| Metric | Before | Epoch 3 | Change (pp) |
 |---|---:|---:|---:|
 | Exact Match | 50.00% | 65.71% | +15.71 |
 | Sample Jaccard | 52.50% | 70.97% | +18.47 |

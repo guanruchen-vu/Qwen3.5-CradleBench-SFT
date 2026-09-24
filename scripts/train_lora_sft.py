@@ -18,7 +18,7 @@ from analyze_baseline import calculate_metrics
 from run_baseline import generate_batch, make_result
 from sft_training_utils import (
     check_resume_compatibility, epoch_groups, fingerprint, lr_multiplier,
-    prepare_full_data, validate_config,
+    model_source, prepare_full_data, validate_config,
 )
 from lora_model_setup import initialize_model, write_json
 
@@ -260,7 +260,7 @@ def main():
         import torch
         from transformers import AutoProcessor
 
-        processor = AutoProcessor.from_pretrained(config["model"], revision=config["revision"], local_files_only=True)
+        processor = AutoProcessor.from_pretrained(**model_source(config), local_files_only=True)
         examples, validation, audit = prepare_full_data(processor, config)
         report["data"] = audit
         report["planned_optimizer_steps"] = math.ceil(len(examples) / config["gradient_accumulation_steps"]) * config["num_train_epochs"]

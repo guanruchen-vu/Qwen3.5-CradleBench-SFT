@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from run_baseline import batched, generate_batch, load_rows, make_result
-from sft_training_utils import validate_config
+from sft_training_utils import model_source, validate_config
 
 
 def main():
@@ -35,7 +35,7 @@ def main():
     set_seed(config["seed"])
     processor = AutoProcessor.from_pretrained(args.adapter, local_files_only=True)
     base = AutoModelForMultimodalLM.from_pretrained(
-        config["model"], revision=config["revision"], local_files_only=True,
+        **model_source(config), local_files_only=True,
         dtype=torch.bfloat16, device_map={"": 0}, attn_implementation="sdpa",
     )
     model = PeftModel.from_pretrained(base, args.adapter, is_trainable=False)

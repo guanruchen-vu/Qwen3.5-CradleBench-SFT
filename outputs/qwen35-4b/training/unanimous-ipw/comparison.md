@@ -1,15 +1,15 @@
-Training split: train_unanimous. Selected epoch: 1.
+Training split: train_unanimous. Reported epoch: 3. (Epoch with the highest validation crisis Macro F1: 1.)
 
-| Metric | Before | Selected SFT | Change (pp) |
+| Metric | Before | Epoch 3 | Change (pp) |
 |---|---:|---:|---:|
-| Exact Match | 50.00% | 69.29% | +19.29 |
-| Sample Jaccard | 52.50% | 72.28% | +19.78 |
-| Micro F1 | 53.20% | 73.21% | +20.02 |
-| Macro F1 · all 15 | 41.10% | 59.23% | +18.13 |
-| Macro F1 · crisis 14 | 39.69% | 57.77% | +18.08 |
-| Micro Recall | 53.50% | 74.04% | +20.54 |
-| Macro Recall · all 15 | 48.03% | 62.57% | +14.54 |
-| Macro Recall · crisis 14 | 47.94% | 62.14% | +14.20 |
+| Exact Match | 50.00% | 67.62% | +17.62 |
+| Sample Jaccard | 52.50% | 71.48% | +18.98 |
+| Micro F1 | 53.20% | 71.68% | +18.48 |
+| Macro F1 · all 15 | 41.10% | 58.46% | +17.36 |
+| Macro F1 · crisis 14 | 39.69% | 56.86% | +17.17 |
+| Micro Recall | 53.50% | 74.27% | +20.77 |
+| Macro Recall · all 15 | 48.03% | 64.36% | +16.33 |
+| Macro Recall · crisis 14 | 47.94% | 63.89% | +15.95 |
 | Valid Format | 96.67% | 100.00% | +3.33 |
 
 | Stage | Exact match | Micro F1 | Macro F1 (15) | Crisis Macro F1 | Micro recall | Crisis Macro recall |

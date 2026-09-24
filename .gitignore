@@ -1,11 +1,11 @@
 # Sensitive or large local artifacts are not part of this code-and-aggregate-results release.
 /data/
 /outputs/**/*
-!/outputs/qwen35-4b/
-!/outputs/qwen35-4b/**/
-!/outputs/qwen35-4b/**/*.md
-!/outputs/qwen35-4b/**/*.csv
-!/outputs/qwen35-4b/**/*.png
+!/outputs/qwen35-*/
+!/outputs/qwen35-*/**/
+!/outputs/qwen35-*/**/*.md
+!/outputs/qwen35-*/**/*.csv
+!/outputs/qwen35-*/**/*.png
 
 __pycache__/
 ._*
