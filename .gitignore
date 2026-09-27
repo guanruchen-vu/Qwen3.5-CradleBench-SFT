@@ -6,6 +6,12 @@
 !/outputs/qwen35-*/**/*.md
 !/outputs/qwen35-*/**/*.csv
 !/outputs/qwen35-*/**/*.png
+!/outputs/figures/
+!/outputs/figures/*.pdf
+!/outputs/figures/*.png
+!/outputs/validation-loss/
+!/outputs/validation-loss/*.csv
+!/outputs/validation-loss/*.md
 
 __pycache__/
 ._*

@@ -29,6 +29,8 @@ Core entry points, in run order:
 | Compare models and plot training | [`scripts/compare_metrics.py`](scripts/compare_metrics.py), [`scripts/plot_sft_results.py`](scripts/plot_sft_results.py) |
 | Calculate paired bootstrap intervals | [`scripts/bootstrap_ci_summary.py`](scripts/bootstrap_ci_summary.py) |
 | Relate label retention to per-label test recall | [`scripts/ipw_label_analysis.py`](scripts/ipw_label_analysis.py) |
+| Compute validation loss of each end-of-epoch checkpoint | [`scripts/validation_loss.py`](scripts/validation_loss.py) |
+| Plot Figure 1 and the training/validation loss curves | [`scripts/plot_retention_arrows.py`](scripts/plot_retention_arrows.py), [`scripts/plot_loss_curves.py`](scripts/plot_loss_curves.py) |
 
 The published `train_lora_sft.py` imports `lora_model_setup.py`, which holds the shared BF16/LoRA initialization and JSON helpers, so the formal trainer does not depend on a smoke-test file. To rerun, install PyTorch, a Transformers release supporting Qwen3.5, PEFT, Accelerate, `huggingface_hub`, NumPy, and Matplotlib; download the models locally before training because the SFT loader uses `local_files_only=True`. Run commands and options are documented in each script's `--help` or module docstring. The training configurations are Consensus, Unanimous, and Unanimous-IPW for [4B](configs/qwen35_4b_lora_sft.json) ([Unanimous](configs/qwen35_4b_lora_sft_unanimous.json), [IPW](configs/qwen35_4b_lora_sft_unanimous_ipw.json)) and [9B](configs/qwen35_9b_lora_sft.json) ([Unanimous](configs/qwen35_9b_lora_sft_unanimous.json), [IPW](configs/qwen35_9b_lora_sft_unanimous_ipw.json)). For example:
 
@@ -77,5 +79,10 @@ Result files, for [4B](outputs/qwen35-4b) and [9B](outputs/qwen35-9b):
 - `test-bootstrap-ci/`: test summary with all paired differences (`summary.md`), machine-readable summary (`summary.csv`), and paired differences (`paired-differences.csv`).
 - `ipw-label-analysis/`: label retention, IPW weights, and per-label test recall, with Spearman correlations between retention and recall differences.
 - `training/{consensus,unanimous,unanimous-ipw}/`: validation metrics after each epoch and the training-loss curve. Runs that skipped their own before-training evaluation reuse the result of a run with the same untrained model.
+
+Figures and validation loss:
+
+- [`outputs/figures/`](outputs/figures): `fig1-retention-recall` (Figure 1 of the abstract: per-label recall of the Unanimous and Unanimous-IPW models relative to the Consensus model against label retention, drawn from `ipw-label-analysis/`) and `loss-curves` (training and end-of-epoch validation loss of the six runs).
+- [`outputs/validation-loss/`](outputs/validation-loss): validation loss (answer-token cross-entropy on the 420 development posts) of every end-of-epoch checkpoint (`selection.md`, `validation-loss.csv`); it is lowest at epoch 1 for all six runs, which the supplement uses as a checkpoint-rule sensitivity analysis.
 
 Macro F1 follows the analysis script's convention of assigning F1 = 0 to a label absent from a resample. Raw data and individual predictions are not committed. Download the dataset from its original source and run the scripts to regenerate them.
