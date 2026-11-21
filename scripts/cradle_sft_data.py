@@ -8,6 +8,7 @@ import random
 from pathlib import Path
 
 from cradle_common import build_messages, is_valid_label_response, local_csv_path, parse_gold_labels
+from model_families import end_of_turn_id, format_messages, tokenizer_of
 
 
 def encode_example(processor, row: dict[str, str], max_length: int) -> dict | None:
@@ -16,23 +17,25 @@ def encode_example(processor, row: dict[str, str], max_length: int) -> dict | No
         raise ValueError(f"Invalid gold labels for question {row['question_id']}")
     answer = ", ".join(parse_gold_labels(row["final_labels"]))
     messages = build_messages(row["question_text"])
+    answer_turn = {"role": "assistant", "content": [{"type": "text", "text": answer}]}
     prompt = processor.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True, enable_thinking=False,
+        format_messages(messages, processor), tokenize=False, add_generation_prompt=True, enable_thinking=False,
     )
     completed = processor.apply_chat_template(
-        messages + [{"role": "assistant", "content": [{"type": "text", "text": answer}]}],
+        format_messages(messages + [answer_turn], processor),
         tokenize=False, add_generation_prompt=False, enable_thinking=False,
     )
-    tokenizer = processor.tokenizer
+    tokenizer = tokenizer_of(processor)
+    end_of_turn = end_of_turn_id(processor)
     prompt_ids = tokenizer(prompt, add_special_tokens=False)["input_ids"]
     full_ids = tokenizer(completed, add_special_tokens=False)["input_ids"]
     if not prompt_ids or full_ids[:len(prompt_ids)] != prompt_ids:
         raise ValueError("Chat-template prompt is not a token prefix of the completed example")
     # Train through the assistant end-of-turn token, excluding any trailing newline.
     answer_ids = full_ids[len(prompt_ids):]
-    if tokenizer.eos_token_id not in answer_ids:
+    if end_of_turn not in answer_ids:
         raise ValueError("Assistant completion has no end-of-turn token")
-    answer_ids = answer_ids[:answer_ids.index(tokenizer.eos_token_id) + 1]
+    answer_ids = answer_ids[:answer_ids.index(end_of_turn) + 1]
     if tokenizer.decode(answer_ids[:-1], skip_special_tokens=False).strip() != answer:
         raise ValueError("Completion includes unexpected template text instead of only labels")
     input_ids = prompt_ids + answer_ids

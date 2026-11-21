@@ -40,6 +40,13 @@ python scripts/export_epoch_adapter.py outputs/qwen35-4b-lora-sft-unanimous-ipw-
 python scripts/run_sft_adapter.py --adapter outputs/qwen35-4b-lora-sft-unanimous-ipw-seed42/epoch3-adapter --split test --batch-size 4 --max-input-tokens 4608 --output outputs/qwen35-4b-lora-sft-unanimous-ipw-epoch3-test.jsonl
 ```
 
+## Additional models and class-balanced baseline
+
+The workshop version adds [google/gemma-4-E4B-it](https://huggingface.co/google/gemma-4-E4B-it) (revision `ee0ef6023621cff504d758262d4e04895a5af4a2`) and [meta-llama/Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct) (revision `0e9e39f249a16976918f6564b8830bc894c89659`), and a class-balanced (CB) baseline for all four models. CB uses the same per-post weighting (largest label factor, mean-1 normalization, `[0.5, 5]` clip) but sets each label's factor to the inverse effective number of samples, (1 − β)/(1 − β^n_U) with β = 0.99 (Cui et al., CVPR 2019), instead of the inverse retention (`loss_weighting.method = "label_cb"` in the `*_unanimous_cb.json` configs). [`scripts/model_families.py`](scripts/model_families.py) handles the model-specific loading and chat formatting; Qwen3.5 prompts and encodings are unchanged. Gemma and Llama have no linear-attention blocks, so their LoRA adapters attach to the attention and feed-forward projections; all other settings match the Qwen3.5 runs. The test batch size is 4 for Gemma and 1 for Llama.
+
+- Runners: [`scripts/run_cradle_model.sh`](scripts/run_cradle_model.sh) (base model, then Unanimous, Unanimous-IPW, and Consensus SFT for one model), [`scripts/run_cb_baseline.sh`](scripts/run_cb_baseline.sh) (CB runs), and [`scripts/run_seed_runs.sh`](scripts/run_seed_runs.sh) (extra-seed runs).
+- Results: `test-bootstrap-ci-cb/` in [`outputs/qwen35-4b`](outputs/qwen35-4b), [`outputs/qwen35-9b`](outputs/qwen35-9b), [`outputs/gemma4-e4b`](outputs/gemma4-e4b), and [`outputs/llama31-8b`](outputs/llama31-8b) reports the base model, Consensus, Unanimous, Unanimous-IPW, and Unanimous-CB with the same bootstrap settings; the Qwen3.5 columns it shares with `test-bootstrap-ci/` are identical.
+
 ## Held-out test results (epoch 3)
 
 All nine metrics below are point estimates with **95% percentile bootstrap CIs** from 10,000 paired resamples of the same 600 test posts (seed 42). Values are percentages: point estimate [CI lower, CI upper].

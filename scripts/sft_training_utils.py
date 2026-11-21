@@ -16,16 +16,17 @@ from cradle_common import (
     local_csv_path, parse_gold_labels,
 )
 from cradle_sft_data import encode_example
+from model_families import FAMILIES, format_messages, tokenizer_of
 
 
-SUPPORTED_MODELS = ("Qwen/Qwen3.5-4B", "Qwen/Qwen3.5-9B")
+SUPPORTED_MODELS = tuple(FAMILIES)
 
 
 def validate_config(config):
     if "sample_count" in config or "optimizer_steps" in config:
         raise ValueError("Use the formal SFT config: sample_count/optimizer_steps are smoke-only")
     if config["model"] not in SUPPORTED_MODELS or not re.fullmatch(r"[0-9a-f]{40}", config["revision"]):
-        raise ValueError("Expected Qwen3.5-4B or Qwen3.5-9B pinned to a 40-character model revision")
+        raise ValueError(f"Expected one of {SUPPORTED_MODELS} pinned to a 40-character model revision")
     if "model_path" in config and not (isinstance(config["model_path"], str) and config["model_path"]):
         raise ValueError("model_path must be a non-empty string")
     if config["split"] not in {"train_consensus", "train_unanimous"}:
@@ -53,27 +54,44 @@ def validate_config(config):
     validate_loss_weighting(config.get("loss_weighting"), config["split"])
 
 
+LOSS_WEIGHTING_KEYS = {
+    "label_ipw": {"method", "reference_split", "clip"},
+    "label_cb": {"method", "reference_split", "clip", "beta"},
+}
+
+
 def validate_loss_weighting(spec, split):
-    """Optional label-level IPW; an absent spec keeps the original unweighted loss."""
+    """Optional label-level weighting; an absent spec keeps the original unweighted loss.
+
+    label_ipw: inverse retention rate (count_reference / count_train).
+    label_cb: class-balanced baseline, inverse effective number of samples
+    (1 - beta) / (1 - beta ** count_train) (Cui et al., CVPR 2019).
+    """
     if spec is None:
         return
-    if not isinstance(spec, dict) or set(spec) != {"method", "reference_split", "clip"}:
-        raise ValueError("loss_weighting needs exactly: method, reference_split, clip")
-    if spec["method"] != "label_ipw":
-        raise ValueError("Only method=label_ipw is implemented")
+    if not isinstance(spec, dict) or spec.get("method") not in LOSS_WEIGHTING_KEYS:
+        raise ValueError(f"loss_weighting.method must be one of {sorted(LOSS_WEIGHTING_KEYS)}")
+    if set(spec) != LOSS_WEIGHTING_KEYS[spec["method"]]:
+        raise ValueError(f"{spec['method']} needs exactly: {sorted(LOSS_WEIGHTING_KEYS[spec['method']])}")
+    if spec["method"] == "label_cb" and not (isinstance(spec["beta"], float) and 0 < spec["beta"] < 1):
+        raise ValueError("label_cb needs a float beta with 0 < beta < 1")
     if (split, spec["reference_split"]) != ("train_unanimous", "train_consensus"):
-        raise ValueError("label_ipw reweights train_unanimous toward train_consensus")
+        raise ValueError("loss weighting reweights train_unanimous (reference: train_consensus)")
     clip = spec["clip"]
     if not isinstance(clip, list) or len(clip) != 2 or not 0 < clip[0] <= 1 <= clip[1] < float("inf"):
         raise ValueError("clip must be [low, high] with 0 < low <= 1 <= high")
 
 
-def label_ipw_weights(train_rows, reference_rows, clip):
+def label_ipw_weights(train_rows, reference_rows, clip, beta=None):
     """Mild inverse-retention weights for a training split that is a subset of the reference split.
 
     Each label gets count_reference / count_train (one over its retention rate); a post takes
     the largest ratio among its labels. Weights are normalized to mean 1, so the overall
     gradient scale and learning rate stay comparable with unweighted runs.
+
+    With beta set (method label_cb), each label instead gets the class-balanced weight
+    (1 - beta) / (1 - beta ** count_train), which uses training-set frequency only; the
+    max-over-labels, normalization, and clipping steps are identical.
     """
     reference_texts = {clean_question_text(row["question_text"]) for row in reference_rows}
     if any(clean_question_text(row["question_text"]) not in reference_texts for row in train_rows):
@@ -82,7 +100,10 @@ def label_ipw_weights(train_rows, reference_rows, clip):
     reference_counts = Counter(label for row in reference_rows for label in parse_gold_labels(row["final_labels"]))
     if any(not 0 < train_counts[label] <= reference_counts[label] for label in CANONICAL_LABELS):
         raise ValueError("Every label needs 0 < training count <= reference count")
-    ratio = {label: reference_counts[label] / train_counts[label] for label in CANONICAL_LABELS}
+    if beta is None:
+        ratio = {label: reference_counts[label] / train_counts[label] for label in CANONICAL_LABELS}
+    else:
+        ratio = {label: (1 - beta) / (1 - beta ** train_counts[label]) for label in CANONICAL_LABELS}
     raw = [max(ratio[label] for label in parse_gold_labels(row["final_labels"])) for row in train_rows]
     raw_mean = sum(raw) / len(raw)
     low, high = clip
@@ -90,10 +111,13 @@ def label_ipw_weights(train_rows, reference_rows, clip):
     final_mean = sum(clipped) / len(clipped)
     weights = [value / final_mean for value in clipped]
     return weights, {
-        "method": "label_ipw", "post_weight": "max over the post's labels, normalized to mean 1",
+        "method": "label_ipw" if beta is None else "label_cb", "beta": beta,
+        "post_weight": "max over the post's labels, normalized to mean 1",
         "clip": clip, "clipped_examples": sum(not low <= value / raw_mean <= high for value in raw),
-        "retention_rate": {label: 1 / ratio[label] for label in CANONICAL_LABELS},
-        "normalized_label_weight": {label: ratio[label] / raw_mean / final_mean for label in CANONICAL_LABELS},
+        "retention_rate": {label: train_counts[label] / reference_counts[label] for label in CANONICAL_LABELS},
+        # After clipping, i.e. the weight a post carrying only this label actually receives.
+        "normalized_label_weight": {label: min(max(ratio[label] / raw_mean, low), high) / final_mean
+                                    for label in CANONICAL_LABELS},
         "min_weight": min(weights), "max_weight": max(weights),
         "effective_sample_size": sum(weights) ** 2 / sum(weight * weight for weight in weights),
     }
@@ -155,7 +179,8 @@ def prepare_full_data(processor, config):
     weights = None
     if weighting:
         reference_rows, reference_report = read_split(config["data_dir"], weighting["reference_split"])
-        weights, weight_report = label_ipw_weights(train_rows, reference_rows, weighting["clip"])
+        weights, weight_report = label_ipw_weights(
+            train_rows, reference_rows, weighting["clip"], weighting.get("beta"))
         weight_report["reference"] = {key: reference_report[key] for key in ("path", "rows", "sha256")}
     examples, overlong = [], []
     for index, row in enumerate(train_rows):
@@ -172,10 +197,10 @@ def prepare_full_data(processor, config):
     prompt_lengths = []
     for row in validation_rows:
         prompt = processor.apply_chat_template(
-            build_messages(row["question_text"]), tokenize=False,
+            format_messages(build_messages(row["question_text"]), processor), tokenize=False,
             add_generation_prompt=True, enable_thinking=False,
         )
-        prompt_lengths.append(len(processor.tokenizer(prompt, add_special_tokens=False)["input_ids"]))
+        prompt_lengths.append(len(tokenizer_of(processor)(prompt, add_special_tokens=False)["input_ids"]))
     if max(prompt_lengths) > config["eval_max_input_tokens"]:
         raise ValueError("Validation prompts exceed eval_max_input_tokens; increase it, do not drop rows")
     train_report.update(max_tokens=max(len(row["input_ids"]) for row in examples),

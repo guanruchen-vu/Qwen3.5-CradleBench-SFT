@@ -82,7 +82,7 @@ def main() -> None:
         raise FileExistsError(f"Output directory is not empty: {args.output_dir}")
 
     import torch
-    from transformers import AutoProcessor
+    from model_families import load_processor, model_family
 
     groups: dict[tuple, list] = {}
     for item in runs:
@@ -90,7 +90,7 @@ def main() -> None:
     rows = []
     for members in groups.values():
         config = members[0][1]
-        processor = AutoProcessor.from_pretrained(**model_source(config), local_files_only=True)
+        processor = load_processor(model_family(config["model"]), **model_source(config), local_files_only=True)
         validation, report = read_split(config["data_dir"], "validation")
         # No length limit: this is a forward pass over complete posts (the longest prompt is 2,027 tokens).
         examples = [encode_example(processor, row, max_length=10**9) for row in validation]

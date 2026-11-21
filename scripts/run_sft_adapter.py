@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from run_baseline import batched, generate_batch, load_rows, make_result
+from model_families import load_processor, model_class, model_family
 from sft_training_utils import model_source, validate_config
 
 
@@ -28,13 +29,14 @@ def main():
     validate_config(config)
     import torch
     from peft import PeftModel
-    from transformers import AutoModelForMultimodalLM, AutoProcessor, set_seed
+    from transformers import set_seed
 
     if not torch.cuda.is_available() or not torch.cuda.is_bf16_supported():
         raise RuntimeError("BF16 adapter inference requires a CUDA GPU")
     set_seed(config["seed"])
-    processor = AutoProcessor.from_pretrained(args.adapter, local_files_only=True)
-    base = AutoModelForMultimodalLM.from_pretrained(
+    family = model_family(config["model"])
+    processor = load_processor(family, pretrained_model_name_or_path=args.adapter, local_files_only=True)
+    base = model_class(family).from_pretrained(
         **model_source(config), local_files_only=True,
         dtype=torch.bfloat16, device_map={"": 0}, attn_implementation="sdpa",
     )
