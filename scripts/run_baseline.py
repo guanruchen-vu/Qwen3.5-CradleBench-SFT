@@ -18,6 +18,7 @@ from cradle_common import (
     parse_gold_labels,
     parse_model_labels,
 )
+from model_families import format_messages, generation_eos, load_processor, model_class, model_family, tokenizer_of
 
 
 DEFAULT_MODEL = "Qwen/Qwen3.5-4B"
@@ -61,6 +62,7 @@ def parse_args() -> argparse.Namespace:
         help="Maximum dataset rows to run; omit to run the complete split.",
     )
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--revision", help="Model revision; omit to use the cached default (as for Qwen3.5).")
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--max-input-tokens", type=int, default=2_048)
     parser.add_argument("--max-new-tokens", type=int, default=64)
@@ -119,14 +121,10 @@ def batched(rows: list[dict[str, str]], batch_size: int) -> Iterable[list[dict[s
         yield rows[start : start + batch_size]
 
 
-def load_model(model_name: str, quantization: str):
+def load_model(model_name: str, quantization: str, revision: str | None = None):
     try:
         import torch
-        from transformers import (
-            AutoModelForMultimodalLM,
-            AutoProcessor,
-            BitsAndBytesConfig,
-        )
+        from transformers import BitsAndBytesConfig
     except ImportError as error:
         raise RuntimeError(
             "Qwen3.5 requires the configured training environment with a recent "
@@ -146,8 +144,10 @@ def load_model(model_name: str, quantization: str):
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
 
-    processor = AutoProcessor.from_pretrained(model_name)
-    model = AutoModelForMultimodalLM.from_pretrained(model_name, **model_kwargs)
+    family = model_family(model_name)
+    pinned = {"revision": revision} if revision else {}
+    processor = load_processor(family, pretrained_model_name_or_path=model_name, **pinned)
+    model = model_class(family).from_pretrained(model_name, **pinned, **model_kwargs)
     model.eval()
     return torch, processor, model
 
@@ -155,7 +155,7 @@ def load_model(model_name: str, quantization: str):
 def generate_batch(torch, processor, model, rows, args) -> list[str]:
     prompts = [
         processor.apply_chat_template(
-            build_messages(row["question_text"]),
+            format_messages(build_messages(row["question_text"]), processor),
             tokenize=False,
             add_generation_prompt=True,
             enable_thinking=False,
@@ -163,7 +163,7 @@ def generate_batch(torch, processor, model, rows, args) -> list[str]:
         for row in rows
     ]
 
-    tokenizer = processor.tokenizer
+    tokenizer = tokenizer_of(processor)
     tokenizer.padding_side = "left"
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token_id = tokenizer.eos_token_id
@@ -184,7 +184,7 @@ def generate_batch(torch, processor, model, rows, args) -> list[str]:
             do_sample=False,
             max_new_tokens=args.max_new_tokens,
             pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
+            eos_token_id=generation_eos(processor, model),
         )
 
     generated_ids = output_ids[:, inputs["input_ids"].shape[1] :]
@@ -211,7 +211,7 @@ def main() -> None:
     random.seed(args.seed)
 
     rows = load_rows(args)
-    torch, processor, model = load_model(args.model, args.quantization)
+    torch, processor, model = load_model(args.model, args.quantization, args.revision)
 
     output = None
     destination = None

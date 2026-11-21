@@ -21,6 +21,7 @@ from sft_training_utils import (
     model_source, prepare_full_data, validate_config,
 )
 from lora_model_setup import initialize_model, write_json
+from model_families import load_processor, model_family, tokenizer_of
 
 
 def parse_args():
@@ -134,7 +135,7 @@ def evaluate_validation(model, processor, rows, config, root, tag, torch):
     state = capture_rng(torch)
     was_training = model.training
     old_cache = model.config.use_cache
-    old_padding = processor.tokenizer.padding_side
+    old_padding = tokenizer_of(processor).padding_side
     model.eval()
     model.config.use_cache = True
     options = SimpleNamespace(max_input_tokens=config["eval_max_input_tokens"],
@@ -153,7 +154,7 @@ def evaluate_validation(model, processor, rows, config, root, tag, torch):
     finally:
         model.config.use_cache = old_cache
         model.train(was_training)
-        processor.tokenizer.padding_side = old_padding
+        tokenizer_of(processor).padding_side = old_padding
         restore_rng(state, torch)
     metrics = calculate_metrics(records)
     metrics["output"] = str(predictions_path)
@@ -258,9 +259,7 @@ def main():
     started = time.monotonic()
     try:
         import torch
-        from transformers import AutoProcessor
-
-        processor = AutoProcessor.from_pretrained(**model_source(config), local_files_only=True)
+        processor = load_processor(model_family(config["model"]), **model_source(config), local_files_only=True)
         examples, validation, audit = prepare_full_data(processor, config)
         report["data"] = audit
         report["planned_optimizer_steps"] = math.ceil(len(examples) / config["gradient_accumulation_steps"]) * config["num_train_epochs"]

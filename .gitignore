@@ -13,6 +13,22 @@
 !/outputs/validation-loss/*.csv
 !/outputs/validation-loss/*.md
 
+# Gemma 4 and Llama 3.1 aggregate results (same rules as Qwen3.5)
+!/outputs/gemma4-*/
+!/outputs/gemma4-*/**/
+!/outputs/gemma4-*/**/*.md
+!/outputs/gemma4-*/**/*.csv
+!/outputs/gemma4-*/**/*.png
+!/outputs/llama31-*/
+!/outputs/llama31-*/**/
+!/outputs/llama31-*/**/*.md
+!/outputs/llama31-*/**/*.csv
+!/outputs/llama31-*/**/*.png
+# Training-run directories (checkpoints, adapters, auto-generated adapter READMEs) stay local
+/outputs/*-lora-sft-*/
+# Re-runs saved with a timestamp suffix
+/outputs/*/test-bootstrap-ci-*-20*T*Z/
+
 __pycache__/
 ._*
 .DS_Store
